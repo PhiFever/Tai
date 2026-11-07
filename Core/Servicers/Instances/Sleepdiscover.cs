@@ -22,6 +22,11 @@ namespace Core.Servicers.Instances
 
         private DispatcherTimer timer;
 
+        private readonly Dispatcher dispatcher;
+        private DispatcherTimer wakeTimer;
+        private uint lastInputTime;
+        private Point lastInputPoint;
+
         private Point lastPoint;
 
         private SleepStatus status = SleepStatus.Wake;
@@ -49,6 +54,8 @@ namespace Core.Servicers.Instances
         private int emptyPointNum = 0;
         public Sleepdiscover()
         {
+            dispatcher = Dispatcher.CurrentDispatcher;
+
             SystemEvents.PowerModeChanged += new PowerModeChangedEventHandler(OnPowerModeChanged);
             SystemEvents.SessionSwitch += SystemEvents_SessionSwitch;
 
@@ -71,6 +78,7 @@ namespace Core.Servicers.Instances
         public void Stop()
         {
             StopTimer();
+            StopWakeTimer();
         }
 
         private void StartTimer()
@@ -89,6 +97,36 @@ namespace Core.Servicers.Instances
             {
                 timer.Tick -= Timer_Tick;
                 timer.Stop();
+            }
+        }
+
+        private void StopWakeTimer()
+        {
+            if (wakeTimer != null)
+            {
+                wakeTimer.Tick -= WakeTimer_Tick;
+                wakeTimer.Stop();
+                wakeTimer = null;
+            }
+        }
+
+        private void WakeTimer_Tick(object sender, EventArgs e)
+        {
+            if (!TryGetLastInputTime(out uint inputTime))
+            {
+                return;
+            }
+
+            Point point = Win32API.GetCursorPosition();
+            if (inputTime != lastInputTime && point == lastInputPoint)
+            {
+                Logger.Info("系统输入唤醒");
+                Wake();
+            }
+            else
+            {
+                lastInputTime = inputTime;
+                lastInputPoint = point;
             }
         }
 
@@ -260,6 +298,14 @@ namespace Core.Servicers.Instances
             //  设置鼠标钩子
             mouseHook = Win32API.SetMouseHook(mouseProc);
 
+            //  轮询系统输入，补充钩子收不到的提权窗口输入。
+            TryGetLastInputTime(out lastInputTime);
+            lastInputPoint = Win32API.GetCursorPosition();
+            wakeTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher);
+            wakeTimer.Interval = TimeSpan.FromSeconds(1);
+            wakeTimer.Tick += WakeTimer_Tick;
+            wakeTimer.Start();
+
             //  状态通知
             SleepStatusChanged?.Invoke(status);
         }
@@ -272,6 +318,8 @@ namespace Core.Servicers.Instances
             }
             try
             {
+                StopWakeTimer();
+
                 //  注册事件
                 SystemEvents.SessionSwitch += SystemEvents_SessionSwitch;
 
@@ -386,17 +434,24 @@ namespace Core.Servicers.Instances
             }
 
             //  系统输入时间可覆盖键盘钩子收不到的提权窗口输入。
-            var lastInput = new Win32API.LASTINPUTINFO
+            if (TryGetLastInputTime(out uint inputTime))
             {
-                cbSize = (uint)Marshal.SizeOf(typeof(Win32API.LASTINPUTINFO))
-            };
-            if (Win32API.GetLastInputInfo(ref lastInput))
-            {
-                uint elapsedMilliseconds = unchecked((uint)Environment.TickCount - lastInput.dwTime);
+                uint elapsedMilliseconds = unchecked((uint)Environment.TickCount - inputTime);
                 return elapsedMilliseconds >= timeoutMilliseconds;
             }
 
             return true;
+        }
+
+        private static bool TryGetLastInputTime(out uint inputTime)
+        {
+            var lastInput = new Win32API.LASTINPUTINFO
+            {
+                cbSize = (uint)Marshal.SizeOf(typeof(Win32API.LASTINPUTINFO))
+            };
+            bool success = Win32API.GetLastInputInfo(ref lastInput);
+            inputTime = lastInput.dwTime;
+            return success;
         }
     }
 }

@@ -178,15 +178,25 @@ namespace Core.Servicers.Instances
         {
             IntPtr processHandle = IntPtr.Zero;
             processHandle = OpenProcess(Win32API.PROCESS_QUERY_LIMITED_INFORMATION, false, processId_);
-            string executablePath = string.Empty;
-            if (processHandle != IntPtr.Zero)
+            try
             {
-                int MaxPathLength = 4096;
-                var buffer = new StringBuilder(MaxPathLength);
-                QueryFullProcessImageName(processHandle, 0, buffer, ref MaxPathLength);
-                executablePath = buffer.ToString();
+                string executablePath = string.Empty;
+                if (processHandle != IntPtr.Zero)
+                {
+                    int MaxPathLength = 4096;
+                    var buffer = new StringBuilder(MaxPathLength);
+                    QueryFullProcessImageName(processHandle, 0, buffer, ref MaxPathLength);
+                    executablePath = buffer.ToString();
+                }
+                return executablePath;
             }
-            return executablePath;
+            finally
+            {
+                if (processHandle != IntPtr.Zero)
+                {
+                    CloseHandle(processHandle);
+                }
+            }
         }
 
         internal struct WINDOWINFO
@@ -201,28 +211,36 @@ namespace Core.Servicers.Instances
             windowinfo.ownerpid = pID_;
             windowinfo.childpid = windowinfo.ownerpid;
 
+            IntPtr proc = IntPtr.Zero;
             IntPtr pWindowinfo = Marshal.AllocHGlobal(Marshal.SizeOf(windowinfo));
-
-            Marshal.StructureToPtr(windowinfo, pWindowinfo, false);
-
-            Win32API.EnumWindowProc lpEnumFunc = new Win32API.EnumWindowProc(EnumChildWindowsCallback);
-            Win32API.EnumChildWindows(hWnd_, lpEnumFunc, pWindowinfo);
-
-            windowinfo = (WINDOWINFO)Marshal.PtrToStructure(pWindowinfo, typeof(WINDOWINFO));
-            if (windowinfo.childpid == windowinfo.ownerpid)
+            try
             {
-                return null;
+                Marshal.StructureToPtr(windowinfo, pWindowinfo, false);
+
+                Win32API.EnumWindowProc lpEnumFunc = new Win32API.EnumWindowProc(EnumChildWindowsCallback);
+                Win32API.EnumChildWindows(hWnd_, lpEnumFunc, pWindowinfo);
+
+                windowinfo = (WINDOWINFO)Marshal.PtrToStructure(pWindowinfo, typeof(WINDOWINFO));
+                if (windowinfo.childpid == windowinfo.ownerpid)
+                {
+                    return null;
+                }
+                if ((proc = OpenProcess(Win32API.PROCESS_QUERY_LIMITED_INFORMATION, false, (int)windowinfo.childpid)) == IntPtr.Zero) return null;
+
+                int capacity = 2000;
+                StringBuilder sb = new StringBuilder(capacity);
+                QueryFullProcessImageName(proc, 0, sb, ref capacity);
+
+                return sb.ToString(0, capacity);
             }
-            IntPtr proc;
-            if ((proc = OpenProcess(Win32API.PROCESS_QUERY_LIMITED_INFORMATION, false, (int)windowinfo.childpid)) == IntPtr.Zero) return null;
-
-            int capacity = 2000;
-            StringBuilder sb = new StringBuilder(capacity);
-            QueryFullProcessImageName(proc, 0, sb, ref capacity);
-
-            Marshal.FreeHGlobal(pWindowinfo);
-
-            return sb.ToString(0, capacity);
+            finally
+            {
+                if (proc != IntPtr.Zero)
+                {
+                    CloseHandle(proc);
+                }
+                Marshal.FreeHGlobal(pWindowinfo);
+            }
         }
         private bool EnumChildWindowsCallback(IntPtr hWnd_, IntPtr lParam_)
         {

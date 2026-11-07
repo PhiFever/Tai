@@ -58,7 +58,7 @@ namespace Updater
         {
             if (e.PropertyName == nameof(mainModel.Version))
             {
-                githubRelease = new GithubRelease("https://api.github.com/repos/planshit/tai/releases/latest", mainModel.Version);
+                githubRelease = new GithubRelease("https://api.github.com/repos/PhiFever/Tai/releases/latest", mainModel.Version);
 
                 Check();
             }

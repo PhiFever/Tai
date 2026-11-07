@@ -37,7 +37,7 @@ namespace Core.Librarys
         public static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        public static extern bool CloseHandle(UIntPtr hObject);
+        public static extern bool CloseHandle(IntPtr hObject);
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
@@ -73,28 +73,36 @@ namespace Core.Librarys
             windowinfo.ownerpid = pID;
             windowinfo.childpid = windowinfo.ownerpid;
 
+            IntPtr proc = IntPtr.Zero;
             IntPtr pWindowinfo = Marshal.AllocHGlobal(Marshal.SizeOf(windowinfo));
-
-            Marshal.StructureToPtr(windowinfo, pWindowinfo, false);
-
-            EnumWindowProc lpEnumFunc = new EnumWindowProc(EnumChildWindowsCallback);
-            EnumChildWindows(hWnd, lpEnumFunc, pWindowinfo);
-
-            windowinfo = (WINDOWINFO)Marshal.PtrToStructure(pWindowinfo, typeof(WINDOWINFO));
-            if (windowinfo.childpid == windowinfo.ownerpid)
+            try
             {
-                return null;
+                Marshal.StructureToPtr(windowinfo, pWindowinfo, false);
+
+                EnumWindowProc lpEnumFunc = new EnumWindowProc(EnumChildWindowsCallback);
+                EnumChildWindows(hWnd, lpEnumFunc, pWindowinfo);
+
+                windowinfo = (WINDOWINFO)Marshal.PtrToStructure(pWindowinfo, typeof(WINDOWINFO));
+                if (windowinfo.childpid == windowinfo.ownerpid)
+                {
+                    return null;
+                }
+                if ((proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (int)windowinfo.childpid)) == IntPtr.Zero) return null;
+
+                int capacity = 2000;
+                StringBuilder sb = new StringBuilder(capacity);
+                QueryFullProcessImageName(proc, 0, sb, ref capacity);
+
+                return sb.ToString(0, capacity);
             }
-            IntPtr proc;
-            if ((proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (int)windowinfo.childpid)) == IntPtr.Zero) return null;
-
-            int capacity = 2000;
-            StringBuilder sb = new StringBuilder(capacity);
-            QueryFullProcessImageName(proc, 0, sb, ref capacity);
-
-            Marshal.FreeHGlobal(pWindowinfo);
-
-            return sb.ToString(0, capacity);
+            finally
+            {
+                if (proc != IntPtr.Zero)
+                {
+                    CloseHandle(proc);
+                }
+                Marshal.FreeHGlobal(pWindowinfo);
+            }
         }
 
         private static bool EnumChildWindowsCallback(IntPtr hWnd, IntPtr lParam)
