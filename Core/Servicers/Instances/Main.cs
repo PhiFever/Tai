@@ -123,7 +123,7 @@ namespace Core.Servicers.Instances
             if (oldConfig != newConfig)
             {
                 //  处理开机自启
-                SystemCommon.SetStartup(newConfig.General.IsStartatboot);
+                Shortcut.SetStartup(newConfig.General.IsStartatboot);
 
                 //  更新忽略规则
                 UpdateConfigIgnoreProcess();
@@ -162,6 +162,7 @@ namespace Core.Servicers.Instances
             //  加载应用配置（确保配置文件最先加载
             appConfig.Load();
             config = appConfig.GetConfig();
+            Shortcut.SetStartup(config.General.IsStartatboot);
             UpdateConfigIgnoreProcess();
             UpdateConfigProcessWhiteList();
 

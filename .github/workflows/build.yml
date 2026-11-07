@@ -1,0 +1,71 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Restore packages
+        run: nuget restore Tai.sln -NonInteractive
+
+      - name: Build solution
+        run: msbuild Tai.sln /m /p:Configuration=Release '/p:Platform=Any CPU'
+
+      - name: Package
+        id: package
+        run: |
+          $assemblyInfo = Get-Content UI/Properties/AssemblyInfo.cs -Raw
+          $match = [regex]::Match($assemblyInfo, '(?m)^\[assembly: AssemblyVersion\("(\d+\.\d+\.\d+\.\d+)"\)\]')
+          if (-not $match.Success) {
+            throw 'AssemblyVersion was not found.'
+          }
+          $version = $match.Groups[1].Value
+          $staging = Join-Path $env:RUNNER_TEMP 'Tai'
+          New-Item $staging -ItemType Directory -Force | Out-Null
+          Copy-Item UI/bin/Release/* $staging -Recurse
+          foreach ($project in @('TaiBug', 'Updater')) {
+            Copy-Item "$project/bin/Release/$project.exe" $staging
+            Copy-Item "$project/bin/Release/$project.exe.config" $staging
+          }
+          Get-ChildItem $staging -Recurse -File |
+            Where-Object { $_.Extension -in @('.pdb', '.xml') -or $_.Name -like '*.vshost*' } |
+            Remove-Item
+          New-Item artifacts -ItemType Directory -Force | Out-Null
+          $zip = "artifacts/Tai$version.zip"
+          Compress-Archive -Path "$staging/*" -DestinationPath $zip
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tai${{ steps.package.outputs.version }}
+          path: ${{ steps.package.outputs.zip }}
+          if-no-files-found: error
+
+      - name: Publish tag release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ steps.package.outputs.version }}
+          RELEASE_ZIP: ${{ steps.package.outputs.zip }}
+        run: |
+          if ($env:GITHUB_REF_NAME -cne $env:RELEASE_VERSION) {
+            throw "Tag '$env:GITHUB_REF_NAME' must equal AssemblyVersion '$env:RELEASE_VERSION'."
+          }
+          gh release create "$env:GITHUB_REF_NAME" "$env:RELEASE_ZIP" --verify-tag --title "$env:GITHUB_REF_NAME"

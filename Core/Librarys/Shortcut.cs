@@ -50,7 +50,7 @@ namespace Core.Librarys
                 {
                     return true;
                 }
-                return CreateShortcut(path, "");
+                return CreateShortcut(path, "--selfStart");
             }
             else
             {

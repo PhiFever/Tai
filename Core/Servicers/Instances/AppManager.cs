@@ -25,8 +25,6 @@ namespace Core.Servicers.Instances
         public static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern bool QueryFullProcessImageName([In] IntPtr hProcess, [In] int dwFlags, [Out] StringBuilder lpExeName, ref int lpdwSize);
-        public const int PROCESS_QUERY_INFORMATION = 0x0400;
-        public const int PROCESS_VM_READ = 0x0010;
 
         [DllImport("psapi.dll", SetLastError = true)]
         public static extern uint GetModuleBaseName(IntPtr hProcess, IntPtr hModule, [Out] StringBuilder lpBaseName, ref uint nSize);
@@ -179,7 +177,7 @@ namespace Core.Servicers.Instances
         private string GetAppExecutablePath(int processId_)
         {
             IntPtr processHandle = IntPtr.Zero;
-            processHandle = OpenProcess(0x001F0FFF, false, processId_);
+            processHandle = OpenProcess(Win32API.PROCESS_QUERY_LIMITED_INFORMATION, false, processId_);
             string executablePath = string.Empty;
             if (processHandle != IntPtr.Zero)
             {
@@ -216,7 +214,7 @@ namespace Core.Servicers.Instances
                 return null;
             }
             IntPtr proc;
-            if ((proc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, (int)windowinfo.childpid)) == IntPtr.Zero) return null;
+            if ((proc = OpenProcess(Win32API.PROCESS_QUERY_LIMITED_INFORMATION, false, (int)windowinfo.childpid)) == IntPtr.Zero) return null;
 
             int capacity = 2000;
             StringBuilder sb = new StringBuilder(capacity);

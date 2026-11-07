@@ -63,8 +63,7 @@ namespace Core.Librarys
 
         public delegate bool EnumWindowProc(IntPtr hWnd, IntPtr parameter);
 
-        public const UInt32 PROCESS_QUERY_INFORMATION = 0x400;
-        public const UInt32 PROCESS_VM_READ = 0x010;
+        public const UInt32 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         //private const uint WINEVENT_OUTOFCONTEXT = 0;
         //private const uint EVENT_SYSTEM_FOREGROUND = 3;
@@ -87,7 +86,7 @@ namespace Core.Librarys
                 return null;
             }
             IntPtr proc;
-            if ((proc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, (int)windowinfo.childpid)) == IntPtr.Zero) return null;
+            if ((proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, (int)windowinfo.childpid)) == IntPtr.Zero) return null;
 
             int capacity = 2000;
             StringBuilder sb = new StringBuilder(capacity);
@@ -112,6 +111,17 @@ namespace Core.Librarys
             return true;
         }
 
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct LASTINPUTINFO
+        {
+            public uint cbSize;
+            public uint dwTime;
+        }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
         /// <summary>
         /// 获取鼠标坐标

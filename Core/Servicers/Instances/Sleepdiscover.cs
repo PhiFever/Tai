@@ -376,9 +376,27 @@ namespace Core.Servicers.Instances
         {
             TimeSpan timeSpan = DateTime.Now - pressKeyboardLastTime;
 #if DEBUG
-            return timeSpan.TotalSeconds >= 10;
+            const int timeoutMilliseconds = 10 * 1000;
+#else
+            const int timeoutMilliseconds = 10 * 60 * 1000;
 #endif
-            return timeSpan.TotalMinutes >= 10;
+            if (timeSpan.TotalMilliseconds < timeoutMilliseconds)
+            {
+                return false;
+            }
+
+            //  系统输入时间可覆盖键盘钩子收不到的提权窗口输入。
+            var lastInput = new Win32API.LASTINPUTINFO
+            {
+                cbSize = (uint)Marshal.SizeOf(typeof(Win32API.LASTINPUTINFO))
+            };
+            if (Win32API.GetLastInputInfo(ref lastInput))
+            {
+                uint elapsedMilliseconds = unchecked((uint)Environment.TickCount - lastInput.dwTime);
+                return elapsedMilliseconds >= timeoutMilliseconds;
+            }
+
+            return true;
         }
     }
 }
