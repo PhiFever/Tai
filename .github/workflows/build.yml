@@ -39,6 +39,8 @@ jobs:
           $staging = Join-Path $env:RUNNER_TEMP 'Tai'
           New-Item $staging -ItemType Directory -Force | Out-Null
           Copy-Item UI/bin/Release/* $staging -Recurse
+          # Keep the upstream archive's ValueTuple DLL even when MSBuild uses the framework facade.
+          Copy-Item packages/System.ValueTuple.4.3.0/lib/netstandard1.0/System.ValueTuple.dll $staging
           foreach ($project in @('TaiBug', 'Updater')) {
             Copy-Item "$project/bin/Release/$project.exe" $staging
             Copy-Item "$project/bin/Release/$project.exe.config" $staging
